@@ -29,4 +29,4 @@ if __name__ == '__main__':
     with open('CornellCollege.html', 'r', encoding='utf-8') as f:
         html_doc = f.read()
     soup = BeautifulSoup(html_doc, 'html.parser')
-    print(f"Page Titel: {soup.title.string}")
+    print(f"Page Title: {soup.title.string}")
