@@ -1,12 +1,22 @@
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
+from sentence_transformers import SentenceTransformer
+import chromadb
+import uuid
 
 #Global Variables
 start_url = "https://www.cornellcollege.edu"
 domain = urlparse(start_url).netloc
 visited_urls = set()
 urls_to_visit = [start_url]
+
+#Load a pre-trained model to convert text into vectors
+model = SentenceTransformer('all-MiniLM-L6-v2')
+
+#Initialize Chroma DB client and create a collection
+client = chromadb.PersistentClient(path="./vector_db") # Stores the DB locally
+collection = client.get_or_create_collection(name="scraped_paragraphs")
 
 
 def web_crawl(url):
@@ -26,8 +36,21 @@ def web_crawl(url):
         print(f"Error fetching {url}")
         return
 
-    #finds all
-    tags = soup.find_all(["h2", "p"])
+    #Finds all paragraphs <p>
+    paragraphs = [p.get_text().strip() for p in soup.find_all('p') if p.get_text().strip()]
+
+    #Converts text into vectors
+    embeddings = model.encode(paragraphs)
+
+    #Generate unique IDs
+    ids = [str(uuid.uuid4()) for _ in range(len(paragraphs))]
+
+    #Adds to the vector database
+    collection.add(
+        embeddings=embeddings.tolist(),
+        documents=paragraphs,
+        ids=ids
+    )
 
     #Finds all links in the current url and adds them to the urls_to_visit if it's within the domain
     for link in soup.find_all("a"):
