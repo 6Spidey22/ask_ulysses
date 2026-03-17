@@ -4,6 +4,8 @@ from urllib.parse import urljoin, urlparse
 from sentence_transformers import SentenceTransformer
 import chromadb
 import uuid
+from huggingface_hub import login
+
 
 #Global Variables
 start_url = "https://www.cornellcollege.edu"
@@ -11,13 +13,16 @@ domain = urlparse(start_url).netloc
 visited_urls = set()
 urls_to_visit = [start_url]
 
+#Passing hugging face token to
+hf_token = "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"
+login(token=hf_token)
+
 #Load a pre-trained model to convert text into vectors
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
 #Initialize Chroma DB client and create a collection
 client = chromadb.PersistentClient(path="./vector_db") # Stores the DB locally
 collection = client.get_or_create_collection(name="scraped_paragraphs")
-
 
 def web_crawl(url):
     if url in visited_urls:
@@ -39,18 +44,20 @@ def web_crawl(url):
     #Finds all paragraphs <p>
     paragraphs = [p.get_text().strip() for p in soup.find_all('p') if p.get_text().strip()]
 
-    #Converts text into vectors
-    embeddings = model.encode(paragraphs)
+    if len(paragraphs) != 0:
 
-    #Generate unique IDs
-    ids = [str(uuid.uuid4()) for _ in range(len(paragraphs))]
+        #Converts text into vectors
+        embeddings = model.encode(paragraphs)
 
-    #Adds to the vector database
-    collection.add(
-        embeddings=embeddings.tolist(),
-        documents=paragraphs,
-        ids=ids
-    )
+        #Generate unique IDs
+        ids = [str(uuid.uuid4()) for _ in range(len(paragraphs))]
+
+        #Adds to the vector database
+        collection.add(
+            embeddings=embeddings.tolist(),
+            documents=paragraphs,
+            ids=ids
+        )
 
     #Finds all links in the current url and adds them to the urls_to_visit if it's within the domain
     for link in soup.find_all("a"):
@@ -69,3 +76,4 @@ def web_crawl(url):
 if __name__ == '__main__':
     url = urls_to_visit.pop(0)
     web_crawl(url)
+
