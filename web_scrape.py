@@ -14,7 +14,7 @@ visited_urls = set()
 urls_to_visit = [start_url]
 
 #Passing hugging face token to
-hf_token = "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"
+hf_token = "" #Put your hf_token here
 login(token=hf_token)
 
 #Load a pre-trained model to convert text into vectors
