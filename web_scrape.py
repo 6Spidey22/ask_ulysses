@@ -1,17 +1,21 @@
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
+
 from concurrent.futures import ThreadPoolExecutor
+import threading
+
 from sentence_transformers import SentenceTransformer
+from huggingface_hub import login
+
 import chromadb
 import hashlib
-from huggingface_hub import login
+
 from queue import Queue, Empty
-import threading
 
 
 #Passing hugging face token to
-hf_token = "" #implement your hugging_face user token here
+hf_token = "" #add your own hugging face token here
 login(token=hf_token)
 
 #Load a pre-trained model to convert text into vectors
