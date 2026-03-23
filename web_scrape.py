@@ -68,7 +68,9 @@ class MultiThreadedWebCrawler:
             scheme,
             netloc,
             path,
-            query
+            "",
+            query,
+            ""
         ))
 
         return normalized
