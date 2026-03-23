@@ -45,16 +45,49 @@ class MultiThreadedWebCrawler:
     def hash_text(self, text):
         return hashlib.md5(text.encode("utf-8")).hexdigest()
 
+    def normalize_url(self, url):
+        parsed = urlparse(url)
+
+        # 1. Remove fragment (#section)
+        fragmentless = parsed._replace(fragment="")
+
+        # 2. Normalize scheme + domain
+        scheme = "https"  # force one scheme (optional but recommended)
+        netloc = fragmentless.netloc.lower()
+
+        # 3. Normalize path (remove trailing slash)
+        path = fragmentless.path.rstrip("/")
+
+        # 4. Remove tracking query params (optional)
+        query_params = parse_qs(fragmentless.query)
+        allowed_params = {}  # or keep some if needed
+
+        query = urlencode(allowed_params, doseq=True)
+
+        normalized = urlunparse((
+            scheme,
+            netloc,
+            path,
+            "",
+            query,
+            ""
+        ))
+
+        return normalized
+
     def parse(self, html):
         soup = BeautifulSoup(html, "lxml")
 
+        if soup.title and soup.title.string and "Page Not Found" in soup.title.string:
+            return
+
         #Finds all Links
-        anchor_tags = soup.find_all("a")
+        anchor_tags = soup.find_all("a", href = True)
 
         for link in anchor_tags:
-            href = link.get("href")
+            href = link['href']
             if href:
-                full_url = urljoin(self.start_url, href)
+                full_url = self.normalize_url(urljoin(self.start_url, href))
                 if urlparse(full_url).netloc == self.domain and full_url not in self.visited_urls:
                     with self.visited_lock:
                         if full_url not in self.visited_urls:
@@ -63,6 +96,9 @@ class MultiThreadedWebCrawler:
     #The information scraper
     def scrape_info(self, html):
         soup = BeautifulSoup(html, "lxml")
+
+        if soup.title and soup.title.string and "Page Not Found" in soup.title.string:
+            return
 
         paragraphs = []
         for p in soup.find_all('p'):
@@ -106,7 +142,7 @@ class MultiThreadedWebCrawler:
     def run_web_crawler(self):
         while True:
             try:
-                target_url = self.urls_to_visit.get(timeout=60)
+                target_url = self.normalize_url(self.urls_to_visit.get(timeout=60))
                 if target_url not in self.visited_urls:
                     print("Scraping URL: {}".format(target_url))
                     with self.visited_lock:
@@ -125,7 +161,7 @@ class MultiThreadedWebCrawler:
         self.urls_to_visit.join()
         self.pool.shutdown(wait=True)
         print(f"All URLs visited, number of URLs visited: {len(self.visited_urls)}")
-
+        print(f"URLs to visit: {self.urls_to_visit.qsize}")
 
 
 if __name__ == "__main__":
