@@ -12,19 +12,25 @@ login(token=hf_token)
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
 #Initialize Chroma DB client and create a collection
-client = chromadb.PersistentClient(path="./vector_db") # Stores the DB locally
+client = chromadb.PersistentClient(path="./vector_db") #Stores the DB locally
 collection = client.get_or_create_collection(name="scraped_paragraphs")
 
-question = input("Question: ")#"What is Cornell College block plan?"
+def llm_response(question):
+    results = collection.query(query_texts=[question], n_results=5)
 
-results = collection.query(query_texts=[question], n_results=5 )
+    formatted_prompt = f"Question: {question}\n\nContext: {results['documents']}"
 
-formatted_prompt = f"Question: {question}\n\nContext: {results['documents']}"
+    response = ollama.chat(model='llama3.1', messages=[
+        {
+            'role': 'user',
+            'content': formatted_prompt,
+        },
+    ])
 
-response = ollama.chat(model='llama3.1', messages=[
-    {
-        'role': 'user',
-        'content': formatted_prompt,
-    },
-])
-print(response['message']['content'])
+    return response
+
+
+if __name__ == '__main__':
+    question = input("Question: ")#"What is Cornell College block plan?"
+    talk = llm_response(question)
+    print(talk['message']['content'])
