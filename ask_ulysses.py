@@ -1,24 +1,43 @@
 import ollama
 
-from sentence_transformers import SentenceTransformer
-from huggingface_hub import login
 import chromadb
 
-#Passing hugging face token to
-hf_token = "" #put your hugging face token here
-login(token=hf_token)
 
-#Load a pre-trained model to convert text into vectors
-model = SentenceTransformer('all-MiniLM-L6-v2')
 
 #Initialize Chroma DB client and create a collection
 client = chromadb.PersistentClient(path="./vector_db") #Stores the DB locally
-collection = client.get_or_create_collection(name="scraped_paragraphs")
+collection = client.get_or_create_collection(name="scraped_collection")
 
 def llm_response(question):
-    results = collection.query(query_texts=[question], n_results=5)
+    embedded_prompt = ollama.embed(
+        model='nomic-embed-text', #all-minilm',
+        input=question
+    )
 
-    formatted_prompt = f"Question: {question}\n\nContext: {results['documents']}"
+    query_embedding = embedded_prompt["embeddings"][0]
+
+    results = collection.query(
+        query_embeddings=[query_embedding],
+        n_results=10,
+        include=['documents']
+    )
+
+    if not results["documents"] or not results["documents"][0]:
+        print("No results found.")
+        return {"message": {"content": "No relevant info found."}}
+
+    context = "\n\n".join(results['documents'][0])
+
+
+    formatted_prompt = f"""
+    Answer the question using ONLY the context below.
+    
+    Context:
+    {context}
+    
+    Question: 
+    {question}
+    """
 
     response = ollama.chat(model='llama3.1', messages=[
         {
@@ -26,11 +45,16 @@ def llm_response(question):
             'content': formatted_prompt,
         },
     ])
+    print(f"\n\n{results['documents'][0]}\n\n")
 
     return response
 
 
 if __name__ == '__main__':
-    question = input("Question: ")#"What is Cornell College block plan?"
-    talk = llm_response(question)
-    print(talk['message']['content'])
+    print(collection.count())
+    while True:
+        receive = input("Question: ")#"What is Cornell College block plan?"
+        if receive == "quit":
+            break
+        talk = llm_response(receive)
+        print(talk['message']['content'])
