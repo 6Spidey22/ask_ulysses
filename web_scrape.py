@@ -1,29 +1,20 @@
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlunparse, parse_qs, urlencode
 
 from concurrent.futures import ThreadPoolExecutor
 import threading
-
-from sentence_transformers import SentenceTransformer
-from huggingface_hub import login
 
 import chromadb
 import hashlib
 
 from queue import Queue, Empty
 
-
-#Passing hugging face token to
-hf_token = "" #add your own hugging face token here
-login(token=hf_token)
-
-#Load a pre-trained model to convert text into vectors
-model = SentenceTransformer('all-MiniLM-L6-v2')
+import ollama
 
 #Initialize Chroma DB client and create a collection
 client = chromadb.PersistentClient(path="./vector_db") # Stores the DB locally
-collection = client.get_or_create_collection(name="scraped_paragraphs")
+collection = client.get_or_create_collection(name="scraped_collection")
 
 
 
@@ -34,13 +25,12 @@ class MultiThreadedWebCrawler:
         self.start_url = start_url
         self.domain = urlparse(start_url).netloc
         self.session = requests.Session()
-        self.pool = ThreadPoolExecutor(max_workers=10)
+        self.pool = ThreadPoolExecutor(max_workers=15)
         self.visited_lock = threading.Lock()
         self.visited_urls = set()
         self.urls_to_visit = Queue()
         self.urls_to_visit.put(self.start_url)
-        self.min_char = 50 #minimum paragraph length
-        self.min_words = 5 #minnimum number of words
+        self.min_words = 3 #minnimum number of words
 
     def hash_text(self, text):
         return hashlib.md5(text.encode("utf-8")).hexdigest()
@@ -93,6 +83,19 @@ class MultiThreadedWebCrawler:
                         if full_url not in self.visited_urls:
                             self.urls_to_visit.put(full_url)
 
+    def split_text(self, text, chunk_size = 1200, overlap = 100):
+        chunks = []
+        start = 0
+
+        while start < len(text):
+            end = start + chunk_size
+            chunk = text[start:end]
+
+            chunks.append(chunk)
+            start += chunk_size - overlap
+
+        return chunks
+
     #The information scraper
     def scrape_info(self, html):
         soup = BeautifulSoup(html, "lxml")
@@ -104,20 +107,29 @@ class MultiThreadedWebCrawler:
         for p in soup.find_all('p'):
             text = p.get_text().strip()
 
-            if len(text) < self.min_char:
-                continue
             if len(text.split()) < self.min_words:
                 continue
 
             paragraphs.append(text)
+
         try:
             if paragraphs:
-                embeddings = model.encode(paragraphs)
-                ids = [self.hash_text(p) for p in paragraphs]  # ← dedupe upgrade
+                all_chunks = []
+                for i in paragraphs:
+                    chunks = self.split_text(i)
+                    all_chunks.extend(chunks)
+                embeddings = []
+                for chunk in all_chunks:
+                    response = ollama.embed(
+                        model = 'nomic-embed-text', #all-minilm',
+                        input = chunk
+                    )
+                    embeddings.append(response["embeddings"][0])
+                ids = [self.hash_text(c) for c in all_chunks]
 
                 collection.add(
-                    embeddings=embeddings.tolist(),
-                    documents=paragraphs,
+                    embeddings=embeddings,
+                    documents=all_chunks,
                     ids=ids
                 )
         except Exception as e:
