@@ -10,9 +10,12 @@
 
     <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
 </head>
 
 <body class="bg-light">
+
+
 
     <!-- Navbar -->
     <nav class="navbar navbar-dark bg-primary">
@@ -51,6 +54,15 @@
 
             </div>
         </div>
+
+        {% if response %}
+        <div class="card mt-4">
+            <div class="card-body">
+                <h5 class="card-title">Response</h5>
+                {{ response | safe }}
+            </div>
+        </div>
+        {% endif %}
 
     </div>
 
