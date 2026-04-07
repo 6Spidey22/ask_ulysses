@@ -13,58 +13,56 @@
 
 </head>
 
-<body class="bg-light">
+<body class="bg-color">
 
 
 
     <!-- Navbar -->
     <nav class="navbar navbar-dark bg-primary">
-        <div class="container">
-            <span class="navbar-brand mb-0 h1">Cornell College Ask Ulysses</span>
-        </div>
+        <a class="navbar-brand mb-0 h1">Cornell College Ask Ulysses</a>
     </nav>
 
-    <!-- Main Content -->
-    <div class="container mt-5">
+    <div class = "custom-container">
 
-        <!-- Header -->
-        <div class="text-center mb-4">
-            <h1 class="fw-bold">Ask Ulysses</h1>
-            <p class="text-muted">Ask anything about Cornell College</p>
-        </div>
+        <div class="card mt-4 chat-card">
+            <div class="chat-box" id="chat-box">
+                {% for chat in chat_history %}
+                    <div class="chat-message user">
+                        <div class="bubble">{{ chat.user }}</div>
+                    </div>
+                    <div class="chat-message bot">
+                        <div class="bubble">{{ chat.bot | safe }}</div>
+                    </div>
+                {% endfor %}
+            </div>
 
-        <!-- Card (makes it look way better) -->
-        <div class="card shadow-sm">
-            <div class="card-body">
-
-                <form method="POST">
-                    <label>
-                        <input
-                            class="form-control mb-3"
-                            name="question"
-                            placeholder="Ask a question..."
-                            required
-                        >
-                    </label>
-
-                    <button class="btn btn-primary w-100">
-                        Submit
-                    </button>
+            <!-- input area stays inside the card -->
+            <div class="input-container">
+                <form method="POST" class="input-wrapper" id="chat-form">
+                    <textarea
+                        class="form-control chat-input"
+                        name="question"
+                        placeholder="Ask Ulysses Anything About Cornell College..."
+                        rows="1"
+                        id="chat-input"
+                    ></textarea>
+                    <button type="submit" class="send-btn">➤</button>
                 </form>
-
             </div>
         </div>
-
-        {% if response %}
-        <div class="card mt-4">
-            <div class="card-body">
-                <h5 class="card-title">Response</h5>
-                {{ response | safe }}
-            </div>
-        </div>
-        {% endif %}
 
     </div>
 
+    <script>
+        const chatInput = document.getElementById("chat-input");
+        const chatForm = document.getElementById("chat-form");
+
+        chatInput.addEventListener("keydown", function(event) {
+            if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();  // prevent newline
+                chatForm.submit();       // submit the form to Flask
+            }
+        });
+    </script>
 </body>
 </html>
