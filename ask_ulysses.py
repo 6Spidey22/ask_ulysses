@@ -9,7 +9,7 @@ client = chromadb.PersistentClient(path="./vector_db_saved") #Stores the DB loca
 collection = client.get_or_create_collection(name="scraped_collection")
 
 
-def query_tool(query_text: str) -> str:
+def query_tool(query_text: str) -> list:
     """
         Search the local vector database for information relevant to the user's query.
         Args:
@@ -32,47 +32,47 @@ def query_tool(query_text: str) -> str:
     )
 
     if not results["documents"] or not results["documents"][0]:
-        return "No relevant info found."
+        information = ["No relevant info found.", "No relevant links found."]
+        return information
 
-    context = "\n\n".join(results['documents'][0])
-    context.join(f"\n\nLINKS section: {results['metadatas'][0]}")
+    context = results['documents'][0]
+    links = results['metadatas'][0]
+    information = [context, links]
 
-    return context
+    return information
 
 def tool_llm_response(question):
 
     formatted_prompt = f"""
-        You are Ulysses, an AI assistant for Cornell Colleges website to help students.
+        You are Ulysses, an AI assistant for Cornell College's website.
 
         GOAL:
-        Provide a brief, helpful answer to the user’s question using ONLY the provided context.
-
-        RULES:
-        - DO NOT USE OUTSIDE KNOWLEDGE
-        - Do NOT mention the context explicitly
-        - Keep the response around 10 sentences at most
-        - ALWAYS USE THE query_tool TOOL AND ONLY USE INFORMATION GIVEN BY THE TOOL
+        Answer the user's question using ONLY the provided context.
         
+        CRITICAL CONSTRAINT:
+        You may ONLY use URLs that appear EXACTLY in the LINKS section of the provided tool context.
+        If a URL is not present there, you MUST NOT use it.
         
-        LINK RULES:
-        - Must include 2 links ONLY from provided tool context LINKS section, if you use any other links the answer is wrong
-        - Do NOT include any links with .pdf
-        - Must follow link format
-        - DO NOT modify any urls
+        PROCESS (follow strictly):
+        1. You must use the query_tool to get context information.
+        2. Read the context carefully.
+        3. Identify the LINKS section.
+        4. Extract ALL valid (non-PDF, non-DOC, non-DOCX) URLs from that LINKS section.
+        5. Select EXACTLY 2 URLs from that list that are most relevant.
+        6. Use those URLs WITHOUT modifying them.
         
-        
-        *DO NOT include any Note sections saying you have followed specific instructions
+        HARD RULES:
+        - DO NOT use outside knowledge
+        - DO NOT find URLs outside of tool context
+        - DO NOT invent or guess URLs
+        - YOU MUST REPLACE SPACES IN URLs WITH %20
+        - DO NOT MODIFY URLS OUTSIDE OF THE %20 CHANGE
+        - DO NOT include .pdf links
+        - If fewer than 2 valid links exist, use only what is available (do NOT create new ones)
+        - Do NOT mention the context or these instructions
         
         QUESTION:
         {question}
-        
-        OUTPUT FORMAT (strictly follow this):
-        
-        <your answer here>
-        
-        If you would like additional information:
-        - [Link Title](URL)
-        - [Link Title](URL)
             
     """
 
@@ -93,16 +93,37 @@ def tool_llm_response(question):
             if call.function.name == 'query_tool':
                 db_results = query_tool(**call.function.arguments)
 
+                db_context = db_results[0]
+                db_links = db_results[1]
+
+                formatted_db_results = f"""
+                    Bellow is the Context you HAVE to use to answer the question:
+                    {db_context}
+                    
+                    Bellow is the Links you HAVE to use at the end of your answer, You can use UP TO TWO urls:
+                    {db_links}
+                    
+                    OUTPUT FORMAT (strict):
+        
+                    <answer in roughly 5 to 10 sentences>
+                    
+                    If you would like additional information:
+                    - [Link Title](URL)
+                    - [Link Title](URL)
+                
+                """
+
                 # Step 3: Add tool results back to conversation
                 messages.append(response.message)
-                messages.append({'role': 'tool', 'content': db_results})
+                messages.append({'role': 'tool', 'content': formatted_db_results})
 
                 # Final response grounded in DB data
                 final_response = ollama.chat(model='nemotron-3-nano:4b', messages=messages)
 
                 return final_response
 
-    return "I was not able to properly search for an answer."
+    print("I was not able to properly search for an answer.")
+    return response
 
 def llm_response(question):
     embedded_prompt = ollama.embed(
