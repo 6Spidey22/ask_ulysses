@@ -203,6 +203,7 @@ class MultiThreadedWebCrawler:
 
         self.urls_to_visit.join()
         self.pool.shutdown(wait=True)
+        self.parse_pool.shutdown(wait=True)
         print(f"All URLs visited, number of URLs visited: {len(self.visited_urls)}")
         print(f"URLs to visit: {self.urls_to_visit.qsize}")
 
