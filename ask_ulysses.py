@@ -198,7 +198,6 @@ def llm_response(question):
 
 
 if __name__ == '__main__':
-    print(collection.count())
     while True:
         receive = input("Question: ")#"What is Cornell College block plan?"
         if receive == "quit":
