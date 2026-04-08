@@ -1,4 +1,4 @@
-# ask_ulysses
+# Ask Ulysses, A Cornell College Information AI Chatbot
 
 ## Description
 Provide a brief description of the project, its purpose, and what it aims to achieve.
