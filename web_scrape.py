@@ -26,11 +26,9 @@ def get_session():
         thread_local.session = requests.Session()
     return thread_local.session
 
-class MultiThreadedWebCrawler:
-
-    #Initalize
-    def __init__(self, start_url, home_url):
-        self.domain = urlparse(home_url).netloc
+    def __init__(self, start_url):
+        self.stop_event = threading.Event()
+        self.domain = urlparse(start_url).netloc
         self.session = requests.Session()
         self.pool = ThreadPoolExecutor(max_workers=15)
         self.parse_pool = ThreadPoolExecutor(max_workers=15)
