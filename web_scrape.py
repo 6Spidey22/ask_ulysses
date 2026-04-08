@@ -1,78 +1,93 @@
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse, urlunparse, urlencode
-
 from concurrent.futures import ThreadPoolExecutor
 import threading
-
 import chromadb
 import hashlib
-
 from queue import Queue, Empty
-
 import ollama
-
 import time
 import random
+
+
 
 #Initialize Chroma DB client and create a collection
 client = chromadb.PersistentClient(path="vector_db") # Stores the DB locally
 collection = client.get_or_create_collection(name="scraped_collection")
 
+#creates a Thread-Local Storage
 thread_local = threading.local()
 
+
+#creates a session for the thread to use when requesting a URLs html
+#creating a session for a thread specifically is more thread safe than creating a session for all threads combined
 def get_session():
     if not hasattr(thread_local, "session"):
         thread_local.session = requests.Session()
     return thread_local.session
 
+
+#Web Crawler Class, this is used to traverse the websight starting at the start url and
+#finishes when all urls in the domain have been visited
+#this pulls all paragraph<p> information from each page and stores it in a local vector database
+class MultiThreadedWebCrawler:
+
+
+    #Initalize
     def __init__(self, start_url):
-        self.stop_event = threading.Event()
         self.domain = urlparse(start_url).netloc
-        self.session = requests.Session()
-        self.pool = ThreadPoolExecutor(max_workers=15)
-        self.parse_pool = ThreadPoolExecutor(max_workers=15)
-        self.visited_lock = threading.Lock()
-        self.visited_urls = set()
-        self.urls_to_visit = Queue()
-        self.min_words = 3  # minnimum number of words
-        self.count = 0
-        if ".xml" in start_url:
+        self.pool = ThreadPoolExecutor(max_workers=15) #this pool is used for the initial request html retrieval
+        self.parse_pool = ThreadPoolExecutor(max_workers=15) #this pool is used for parsing data
+        self.visited_lock = threading.Lock() #creating a lock on non-thread safe variables
+        self.visited_urls = set() #only unique URLs are stored, no duplicates
+        self.urls_to_visit = Queue() #FIFO
+        self.min_words = 3  # minimum number of words
+        self.count = 0 #used to watch how many URLs are actually scraped
+
+        if ".xml" in start_url: #if the starting URL is a .xml(most likely a site map) scrape it first then add all normal urls
             response = requests.get(start_url)
             xml_data = response.content
             soup = BeautifulSoup(xml_data, 'xml')
             links = soup.find_all('loc')
             for link in links:
                 self.urls_to_visit.put(link.text)
-            if home_url not in self.urls_to_visit.queue:
-                self.urls_to_visit.put(home_url)
             print(self.urls_to_visit.qsize())
-        else:
+        elif start_url == "": #if no url is passed, then the user is trying to start from previously saved state
+            print("Restarting crawler from saved point...")
+            with open("urls_to_visit.txt", "r") as f:
+                for line in f:
+                    self.urls_to_visit.put(line.strip())
+            with open("visited_urls.txt", "r") as f:
+                self.visited_urls = set(line.strip() for line in f)
+        else: #else start at the starting url
             self.urls_to_visit.put(start_url)
-            if home_url not in self.urls_to_visit.queue:
-                self.urls_to_visit.put(home_url)
 
+
+    #used to create unique IDs for information in the vector database
     def hash_text(self, text):
         return hashlib.md5(text.encode("utf-8")).hexdigest()
 
+
+    #normalizes the URL to ensure no identical URLs are being visited even though the string is slightly different
     def normalize_url(self, url):
         parsed = urlparse(url)
 
-        # 1. Remove fragment (#section)
+        #Removes fragment (#section)
         fragmentless = parsed._replace(fragment="")
 
-        # 2. Normalize scheme + domain
-        scheme = "https"  # force one scheme (optional but recommended)
+        #Normalize scheme
+        scheme = "https"  #force one scheme - https
         netloc = fragmentless.netloc.lower()
 
-        # 3. Normalize path (remove trailing slash)
+        #Removes trailing slash
         path = fragmentless.path.rstrip("/")
 
-        # 4. Remove tracking query params (optional)
-        allowed_params = {}  # or keep some if needed
+        allowed_params = {}
 
         query = urlencode(allowed_params, doseq=True)
 
+        #Final normalized url
         normalized = urlunparse((
             scheme,
             netloc,
@@ -84,6 +99,9 @@ def get_session():
 
         return normalized
 
+
+    #Used to find all URLs<a> in the current URL position and check to see if they have been visited or in the domain
+    #if they haven't been visited already and are in the domain, add it to urls_to_visit
     def parse(self, html, base_url):
         soup = BeautifulSoup(html, "lxml")
 
@@ -102,6 +120,9 @@ def get_session():
                         if full_url not in self.visited_urls:
                             self.urls_to_visit.put(full_url)
 
+
+    #This is used to chunk data into smaller sizes for embedding. The embedding model can't handle extremely large chunks of information
+    #This ensures chunks are small enough, and adds some overlap to the chunks to keep them closer together in the vector databse
     def split_text(self, text, chunk_size = 1200, overlap = 100):
         chunks = []
         start = 0
@@ -109,13 +130,13 @@ def get_session():
         while start < len(text):
             end = start + chunk_size
             chunk = text[start:end]
-
             chunks.append(chunk)
             start += chunk_size - overlap
 
         return chunks
 
-    #The information scraper
+
+    #The information scraper is used to find all paragraphs<p> and stores them in the vector database next to the URL they were found in
     def scrape_info(self, html, url):
         soup = BeautifulSoup(html, "lxml")
 
@@ -126,10 +147,8 @@ def get_session():
         paragraphs = []
         for p in soup.find_all('p'):
             text = p.get_text().strip()
-
             if len(text.split()) < self.min_words:
                 continue
-
             paragraphs.append(text)
 
         try:
@@ -147,7 +166,6 @@ def get_session():
                     embeddings.append(response["embeddings"][0])
                 ids = [self.hash_text(c) for c in all_chunks]
                 metadatas = [{"source": url} for _ in all_chunks]
-
                 collection.add(
                     embeddings=embeddings,
                     documents=all_chunks,
@@ -157,6 +175,8 @@ def get_session():
         except Exception as e:
             print(e)
 
+
+    #After the request has been acquired, the html is passed to parse and scrape_info
     def post_scrape_callback(self, res, url):
         try:
             result = res.result()
@@ -166,6 +186,8 @@ def get_session():
         finally:
             self.urls_to_visit.task_done()
 
+
+    #Used to request access to a URLs information
     def scrape_page(self, url):
         try:
             session = get_session()
@@ -174,11 +196,16 @@ def get_session():
         except requests.RequestException:
             return
 
+
+    #The main portion of the web crawler, used to go through the Queue of unvisited URLs and continues until all URLs are visited
     def run_web_crawler(self):
         visited_count = 0
         while True:
             try:
-                target_url = self.normalize_url(self.urls_to_visit.get(timeout=60))
+                try:
+                    target_url = self.normalize_url(self.urls_to_visit.get(timeout=10))
+                except Empty:
+                    continue
                 if target_url not in self.visited_urls:
                     visited_count += 1
                     if visited_count % 1000 == 0:
@@ -194,18 +221,27 @@ def get_session():
                     job.add_done_callback(lambda res, url = target_url: self.parse_pool.submit(self.post_scrape_callback, res, url))
             except Empty:
                 if self.urls_to_visit.unfinished_tasks == 0:
+                    print(f"All URLs visited, number of URLs visited: {len(self.visited_urls)}")
                     break
             except Exception as e:
                 print(e)
                 continue
 
+        #Shuts down all pools running
+        print("Shutting down thread pools...")
         self.urls_to_visit.join()
+        print("pool shut down")
         self.pool.shutdown(wait=True)
+        print("pars pool shut down")
         self.parse_pool.shutdown(wait=True)
-        print(f"All URLs visited, number of URLs visited: {len(self.visited_urls)}")
-        print(f"URLs to visit: {self.urls_to_visit.qsize}")
+        print("Crawler stopped.")
+
+
+
 
 
 if __name__ == "__main__":
-    cc = MultiThreadedWebCrawler("https://www.cornellcollege.edu/sitemap.xml", "https://www.cornellcollege.edu/")
+    cc = MultiThreadedWebCrawler("https://www.cornellcollege.edu/")
+
     cc.run_web_crawler()
+    print("Done")
