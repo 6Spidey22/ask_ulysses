@@ -15,15 +15,15 @@
 
 <body class="bg-color">
 
-
-
     <!-- Navbar -->
     <nav class="navbar navbar-dark bg-primary">
         <a class="navbar-brand mb-0 h1">Cornell College Ask Ulysses</a>
     </nav>
 
+    <!-- Chat Container -->
     <div class = "custom-container">
 
+        <!-- Chat History -->
         <div class="card mt-4 chat-card">
             <div class="chat-box" id="chat-box">
                 {% for chat in chat_history %}
@@ -53,6 +53,7 @@
 
     </div>
 
+    <!-- Script that allows you to enter to send POST and shift+enter to make a new line in the chat box -->
     <script>
         const chatInput = document.getElementById("chat-input");
         const chatForm = document.getElementById("chat-form");
