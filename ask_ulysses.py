@@ -5,7 +5,7 @@ import chromadb
 
 
 #Initialize Chroma DB client and create a collection
-client = chromadb.PersistentClient(path="./vector_db_saved") #Stores the DB locally
+client = chromadb.PersistentClient(path="vector_db") #Stores the DB locally
 collection = client.get_or_create_collection(name="scraped_collection")
 
 
