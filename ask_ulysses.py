@@ -1,5 +1,4 @@
 import ollama
-
 import chromadb
 
 
@@ -9,6 +8,7 @@ client = chromadb.PersistentClient(path="vector_db") #Stores the DB locally
 collection = client.get_or_create_collection(name="scraped_collection")
 
 
+#this is a tool a llm can use to query data itself and find information off of its own query_text
 def query_tool(query_text: str) -> list:
     """
         Search the local vector database for information relevant to the user's query.
@@ -41,6 +41,8 @@ def query_tool(query_text: str) -> list:
 
     return information
 
+
+#this is a llm response that uses the query_tool
 def tool_llm_response(question):
 
     formatted_prompt = f"""
@@ -92,7 +94,6 @@ def tool_llm_response(question):
         for call in response.message.tool_calls:
             if call.function.name == 'query_tool':
                 db_results = query_tool(**call.function.arguments)
-
                 db_context = db_results[0]
                 db_links = db_results[1]
 
@@ -113,21 +114,24 @@ def tool_llm_response(question):
                 
                 """
 
-                # Step 3: Add tool results back to conversation
+                #Adds tool results back to conversation
                 messages.append(response.message)
                 messages.append({'role': 'tool', 'content': formatted_db_results})
 
-                # Final response grounded in DB data
+                #Final response grounded in DB data
                 final_response = ollama.chat(model='nemotron-3-nano:4b', messages=messages)
 
                 return final_response
 
+    #only gets here if the tool isn't used
     print("I was not able to properly search for an answer.")
     return response
 
+
+#this is a llm response that uses the question to query and pass context given from that query. Not always accurate.
 def llm_response(question):
     embedded_prompt = ollama.embed(
-        model='nomic-embed-text', #all-minilm',
+        model='nomic-embed-text',
         input=question
     )
 
