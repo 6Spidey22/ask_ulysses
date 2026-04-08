@@ -1,16 +1,18 @@
 from flask import Flask, render_template, request, redirect, url_for, session
 from flask_session import Session
-
 from ask_ulysses import tool_llm_response
 import markdown
 from bs4 import BeautifulSoup
 
 
 app = Flask(__name__, template_folder='templates')
-app.secret_key = "Cornell_College_Ask_Ulysses"  # required for sessions
-app.config["SESSION_TYPE"] = "filesystem"  # store session server-side
+app.secret_key = "Cornell_College_Ask_Ulysses"  #required for sessions
+app.config["SESSION_TYPE"] = "filesystem"  #store session server-side
 Session(app)
 
+#creates a home page(the page that is opened when going to the first url given when the program starts)
+#this uses the ask_ulysses.html template
+#this is the back end of the page that uses ask_ulysses.py to answer the questions received form the "POST" method
 @app.route("/", methods=["GET", "POST"])
 def home():
     if "chat_history" not in session:
@@ -33,6 +35,8 @@ def home():
         return redirect(url_for("home"))
 
     return render_template("ask_ulysses.html", chat_history=session.get("chat_history", []))
+
+
 
 if __name__ == '__main__':
     app.run(host = '0.0.0.0', port = 5000, debug = True)
